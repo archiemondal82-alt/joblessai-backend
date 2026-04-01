@@ -20,9 +20,9 @@ def extract_text(file_bytes):
 def normalize(data):
     ps = data.get("profile_summary", "")
     if isinstance(ps, dict):
-        ps = " ".join([str(v) for v in ps.values()])
+        ps = " ".join(str(v) for v in ps.values())
     elif isinstance(ps, list):
-        ps = " ".join([str(v) for v in ps])
+        ps = " ".join(str(v) for v in ps)
     else:
         ps = str(ps)
 
@@ -43,7 +43,7 @@ def normalize(data):
         for k, v in c.get("skill_gap_analysis", {}).items():
             try:
                 if isinstance(v, list):
-                    v = v[0] if len(v) > 0 else 0
+                    v = v[0] if v else 0
                 safe_gap[k] = float(v)
             except:
                 safe_gap[k] = 0.0
@@ -57,11 +57,11 @@ def normalize(data):
                 return []
             return [str(val)]
 
-        c["next_steps"] = ensure_list(c.get("next_steps", []))
-        c["learning_path"] = ensure_list(c.get("learning_path", []))
-        c["interview_tips"] = ensure_list(c.get("interview_tips", []))
-        c["top_companies"] = ensure_list(c.get("top_companies", []))
-        c["certifications"] = ensure_list(c.get("certifications", []))
+        c["next_steps"] = ensure_list(c.get("next_steps"))
+        c["learning_path"] = ensure_list(c.get("learning_path"))
+        c["interview_tips"] = ensure_list(c.get("interview_tips"))
+        c["top_companies"] = ensure_list(c.get("top_companies"))
+        c["certifications"] = ensure_list(c.get("certifications"))
 
         c["job_search_keywords"] = str(c.get("job_search_keywords", ""))
 
@@ -74,15 +74,13 @@ async def analyze_pdf(file: UploadFile = File(...)):
         contents = await file.read()
         resume_text = extract_text(contents)
 
-        prompt = f"""
-You are an Industrial expert Senior AI career advisor.
+        prompt = f"""You are an expert AI career advisor.
 
 Analyze the resume and return STRICT JSON.
 
 IMPORTANT RULES:
-- Return AT LEAST 5 career paths
+- Return AT LEAST 10 career paths
 - match_score must be realistic (40–95 range)
-- Be logical and not overly harsh
 - Include diverse roles
 
 Resume:
@@ -90,25 +88,24 @@ Resume:
 
 FORMAT:
 {{
-  "profile_summary": "concise summary",
+  "profile_summary": "summary",
   "current_skills": ["skills"],
   "careers": [
     {{
-      "title": "career role",
+      "title": "role",
       "match_score": 0,
-      "salary_range": "string",
-      "reason": "why suitable",
-      "skill_gap_analysis": {{"skill": 0.5}},
-      "next_steps": ["steps"],
-      "learning_path": ["courses"],
-      "interview_tips": ["tips"],
-      "job_search_keywords": "keywords",
-      "top_companies": ["companies"],
-      "certifications": ["certs"]
+      "salary_range": "",
+      "reason": "",
+      "skill_gap_analysis": {{}},
+      "next_steps": [],
+      "learning_path": [],
+      "interview_tips": [],
+      "job_search_keywords": "",
+      "top_companies": [],
+      "certifications": []
     }}
   ]
-}}
-"""
+}}"""
 
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -118,12 +115,7 @@ FORMAT:
             messages=[{"role": "user", "content": prompt}],
         )
 
-        raw = response.choices[0].message.content
-
-        try:
-            data = json.loads(raw)
-        except:
-            return {"error": "Invalid JSON from AI", "raw": raw}
+        data = json.loads(response.choices[0].message.content)
 
         return normalize(data)
 
