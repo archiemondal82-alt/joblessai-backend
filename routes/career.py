@@ -4,7 +4,6 @@ import os
 import json
 from groq import Groq
 
-# ✅ REQUIRED — DO NOT CHANGE NAME
 router = APIRouter()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -19,22 +18,30 @@ def extract_text(file_bytes):
 
 
 def normalize(data):
-    data["profile_summary"] = data.get("profile_summary", "")
+    # 🔥 FIX profile_summary (force string always)
+    ps = data.get("profile_summary", "")
+    if isinstance(ps, dict):
+        ps = " ".join([str(v) for v in ps.values()])
+    elif isinstance(ps, list):
+        ps = " ".join([str(v) for v in ps])
+    else:
+        ps = str(ps)
+
+    data["profile_summary"] = ps
     data["current_skills"] = data.get("current_skills", [])
     data["careers"] = data.get("careers", [])
 
     for c in data["careers"]:
 
-        # Safe match score
         try:
             c["match_score"] = int(c.get("match_score", 0))
         except:
             c["match_score"] = 0
 
-        c["salary_range"] = c.get("salary_range", "")
-        c["reason"] = c.get("reason", "")
+        c["salary_range"] = str(c.get("salary_range", ""))
+        c["reason"] = str(c.get("reason", ""))
 
-        # Safe skill_gap_analysis (handles list/string/float)
+        # 🔥 SAFE skill_gap_analysis
         safe_gap = {}
         for k, v in c.get("skill_gap_analysis", {}).items():
             try:
@@ -46,12 +53,21 @@ def normalize(data):
 
         c["skill_gap_analysis"] = safe_gap
 
-        c["next_steps"] = c.get("next_steps", [])
-        c["learning_path"] = c.get("learning_path", [])
-        c["interview_tips"] = c.get("interview_tips", [])
-        c["job_search_keywords"] = c.get("job_search_keywords", "")
-        c["top_companies"] = c.get("top_companies", [])
-        c["certifications"] = c.get("certifications", [])
+        # 🔥 FORCE LIST TYPES (avoid crashes in Android)
+        def ensure_list(val):
+            if isinstance(val, list):
+                return val
+            if val is None:
+                return []
+            return [str(val)]
+
+        c["next_steps"] = ensure_list(c.get("next_steps", []))
+        c["learning_path"] = ensure_list(c.get("learning_path", []))
+        c["interview_tips"] = ensure_list(c.get("interview_tips", []))
+        c["top_companies"] = ensure_list(c.get("top_companies", []))
+        c["certifications"] = ensure_list(c.get("certifications", []))
+
+        c["job_search_keywords"] = str(c.get("job_search_keywords", ""))
 
     return data
 
