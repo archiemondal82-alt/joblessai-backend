@@ -7,13 +7,14 @@ Deploy on Render — set GROQ_API_KEY as env var.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import os
 
 # Import routers
 from routes import career, resume, interview, pyq, compare
 
 app = FastAPI(title="JobLess AI API", version="1.0.0")
 
-# CORS (keep as is)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,7 +22,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routers (keep EXACTLY like this)
+# Routers
 app.include_router(career.router,    prefix="/api/career",    tags=["Career"])
 app.include_router(resume.router,    prefix="/api/resume",    tags=["Resume"])
 app.include_router(interview.router, prefix="/api/interview", tags=["Interview"])
@@ -33,5 +34,7 @@ app.include_router(compare.router,   prefix="/api/compare",   tags=["Compare"])
 def root():
     return {"status": "JobLess AI API is running"}
 
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
