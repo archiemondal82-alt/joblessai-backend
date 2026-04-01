@@ -78,28 +78,37 @@ async def analyze_pdf(file: UploadFile = File(...)):
         contents = await file.read()
         resume_text = extract_text(contents)
 
-        prompt = f"""
-Analyze this resume and return STRICT JSON:
+     prompt = f"""
+You are an expert AI career advisor.
 
+Analyze the resume and return STRICT JSON.
+
+IMPORTANT RULES:
+- Return AT LEAST 5 career paths
+- match_score must be realistic (40–95 range)
+- Be logical and not overly harsh
+- Include diverse roles
+
+Resume:
 {resume_text}
 
 FORMAT:
 {{
-  "profile_summary": "",
-  "current_skills": [],
+  "profile_summary": "concise summary",
+  "current_skills": ["skills"],
   "careers": [
     {{
-      "title": "",
-      "match_score": 0,
-      "salary_range": "",
-      "reason": "",
-      "skill_gap_analysis": {{}},
-      "next_steps": [],
-      "learning_path": [],
-      "interview_tips": [],
-      "job_search_keywords": "",
-      "top_companies": [],
-      "certifications": []
+      "title": "career role",
+      "match_score": 0-100,
+      "salary_range": "string",
+      "reason": "why suitable",
+      "skill_gap_analysis": {{"skill": 0.5}},
+      "next_steps": ["steps"],
+      "learning_path": ["courses"],
+      "interview_tips": ["tips"],
+      "job_search_keywords": "keywords",
+      "top_companies": ["companies"],
+      "certifications": ["certs"]
     }}
   ]
 }}
