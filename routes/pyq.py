@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ai_handler import get_gemini_response
+from ai_handler import get_ai_response
+import json
 
 router = APIRouter()
 
@@ -9,15 +10,13 @@ class PYQRequest(BaseModel):
     company: str = "general"
     year_range: str = "2020-2024"
     num_questions: int = 15
-    api_key: str
-    model: str = "gemini-1.5-flash"
 
 @router.post("/get-questions")
 async def get_pyq(request: PYQRequest):
     prompt = f"""
-    You are a database of previous year interview questions. Generate {request.num_questions} 
-    realistic previous year interview questions for {request.domain} roles 
-    {"at " + request.company if request.company != "general" else "at top tech companies"} 
+    You are a database of previous year interview questions. Generate {request.num_questions}
+    realistic previous year interview questions for {request.domain} roles
+    {"at " + request.company if request.company != "general" else "at top tech companies"}
     from {request.year_range}.
 
     For each question include:
@@ -42,13 +41,12 @@ async def get_pyq(request: PYQRequest):
     Return ONLY valid JSON array.
     """
     try:
-        result = get_gemini_response(prompt, request.api_key, request.model)
+        result = get_ai_response(prompt)
         result = result.strip()
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        import json
         questions = json.loads(result.strip())
         return {"questions": questions, "domain": request.domain}
     except Exception as e:
