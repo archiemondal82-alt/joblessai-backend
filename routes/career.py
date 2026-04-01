@@ -1,97 +1,79 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
-from pydantic import BaseModel
-from ai_handler import get_ai_response, extract_pdf_text
+from fastapi import APIRouter, UploadFile, File
+import fitz
+import os
+import json
+from groq import Groq
 
 router = APIRouter()
 
-class CareerRequest(BaseModel):
-    resume_text: str
-    analysis_depth: str = "comprehensive"
-    include_learning_path: bool = True
-    include_interview_prep: bool = True
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-@router.post("/analyze")
-async def analyze_career(request: CareerRequest):
-    depth_map = {
-        "quick": "Provide a brief 3-5 bullet point summary.",
-        "standard": "Provide a standard analysis with key sections.",
-        "comprehensive": "Provide an in-depth comprehensive analysis with detailed sections.",
-    }
-    depth_instruction = depth_map.get(request.analysis_depth, depth_map["comprehensive"])
+def extract_text(file_bytes):
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
 
-    learning_section = """
-    ## 📚 Learning Path
-    - Recommend specific courses, certifications, or skills to acquire
-    - Include estimated timelines
-    - Suggest YouTube channels or free resources
-    """ if request.include_learning_path else ""
+def normalize(data):
+    data["profile_summary"] = data.get("profile_summary", "")
+    data["current_skills"] = data.get("current_skills", [])
+    data["careers"] = data.get("careers", [])
 
-    interview_section = """
-    ## 🎯 Interview Preparation
-    - Top 5 technical questions for target roles
-    - Top 3 behavioral questions
-    - Key talking points from resume
-    """ if request.include_interview_prep else ""
+    for c in data["careers"]:
+        c["match_score"] = int(c.get("match_score", 0))
+        c["salary_range"] = c.get("salary_range", "")
+        c["reason"] = c.get("reason", "")
+        c["skill_gap_analysis"] = {
+            k: float(v) for k, v in c.get("skill_gap_analysis", {}).items()
+        }
+        c["next_steps"] = c.get("next_steps", [])
+        c["learning_path"] = c.get("learning_path", [])
+        c["interview_tips"] = c.get("interview_tips", [])
+        c["job_search_keywords"] = c.get("job_search_keywords", "")
+        c["top_companies"] = c.get("top_companies", [])
+        c["certifications"] = c.get("certifications", [])
 
-    prompt = f"""
-    You are an expert career counselor and resume analyst. Analyze the following resume and provide actionable career guidance.
-
-    {depth_instruction}
-
-    Resume Content:
-    {request.resume_text}
-
-    Please provide:
-
-    ## 🎯 Career Profile Summary
-    - Current level and specialization
-    - Key strengths identified
-
-    ## 💼 Top Career Path Recommendations
-    For each path provide: Role title, why it fits, salary range (INR), growth potential
-
-    ## ⚡ Skills Gap Analysis
-    - Strong skills (already present)
-    - Missing skills for target roles
-    - Quick wins to add
-
-    ## 📄 Resume Improvement Tips
-    - ATS optimization suggestions
-    - Formatting recommendations
-    - Content gaps
-
-    {learning_section}
-    {interview_section}
-
-    ## 🚀 30-60-90 Day Action Plan
-    - Immediate actions (next 30 days)
-    - Short-term goals (60 days)
-    - Medium-term milestones (90 days)
-    """
-
-    try:
-        result = get_ai_response(prompt)
-        return {"analysis": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
+    return data
 
 @router.post("/analyze-pdf")
-async def analyze_career_pdf(
-    file: UploadFile = File(...),
-    analysis_depth: str = Form("comprehensive"),
-    include_learning_path: bool = Form(True),
-    include_interview_prep: bool = Form(True),
-):
-    pdf_bytes = await file.read()
-    resume_text = extract_pdf_text(pdf_bytes)
-    if not resume_text:
-        raise HTTPException(status_code=400, detail="Could not extract text from PDF.")
+async def analyze_pdf(file: UploadFile = File(...)):
+    contents = await file.read()
+    resume_text = extract_text(contents)
 
-    req = CareerRequest(
-        resume_text=resume_text,
-        analysis_depth=analysis_depth,
-        include_learning_path=include_learning_path,
-        include_interview_prep=include_interview_prep,
+    prompt = f"""
+Analyze this resume and return STRICT JSON:
+
+{resume_text}
+
+FORMAT:
+{{
+  "profile_summary": "",
+  "current_skills": [],
+  "careers": [
+    {{
+      "title": "",
+      "match_score": 0,
+      "salary_range": "",
+      "reason": "",
+      "skill_gap_analysis": {{}},
+      "next_steps": [],
+      "learning_path": [],
+      "interview_tips": [],
+      "job_search_keywords": "",
+      "top_companies": [],
+      "certifications": []
+    }}
+  ]
+}}
+"""
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": prompt}],
     )
-    return await analyze_career(req)
+
+    data = json.loads(response.choices[0].message.content)
+
+    return normalize(data)
