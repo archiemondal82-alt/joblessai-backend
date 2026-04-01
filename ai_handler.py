@@ -1,56 +1,59 @@
 """
-AI Handler — Groq (primary) + Cohere (fallback).
-Keys are stored as Render environment variables.
+AI Handler — Cohere primary, Groq as backup via direct HTTP.
 """
 
 import os
-from groq import Groq
 import cohere
 
-GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 COHERE_API_KEY = os.environ.get("COHERE_API_KEY", "")
-
-GROQ_MODEL   = "llama-3.3-70b-versatile"
-COHERE_MODEL = "command-r-plus"
-
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
 
 def get_ai_response(prompt: str) -> str:
-    """Call Groq first; fall back to Cohere if Groq fails."""
-    if GROQ_API_KEY:
-        try:
-            client = Groq(api_key=GROQ_API_KEY)
-            response = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4096,
-                temperature=0.7,
-            )
-            return response.choices[0].message.content
-        except Exception as groq_err:
-            print(f"Groq failed: {groq_err} — trying Cohere")
-
     if COHERE_API_KEY:
         try:
             co = cohere.ClientV2(api_key=COHERE_API_KEY)
             response = co.chat(
-                model=COHERE_MODEL,
+                model="command-r-plus",
                 messages=[{"role": "user", "content": prompt}],
             )
             return response.message.content[0].text
-        except Exception as cohere_err:
-            raise RuntimeError(f"Both providers failed. Cohere error: {cohere_err}")
+        except Exception as e:
+            print(f"Cohere failed: {e}")
 
-    raise RuntimeError("No AI provider configured. Set GROQ_API_KEY or COHERE_API_KEY on Render.")
+    if GROQ_API_KEY:
+        try:
+            import httpx
+            r = httpx.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": prompt}], "max_tokens": 4096},
+                timeout=60
+            )
+            return r.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            raise RuntimeError(f"Both failed. Groq error: {e}")
+
+    raise RuntimeError("No API keys configured.")
 
 
 def extract_pdf_text(pdf_bytes: bytes) -> str:
-    """Extract text from PDF bytes using pdfplumber."""
-    import pdfplumber
-    import io
+    import pdfplumber, io
     text = ""
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+            t = page.extract_text()
+            if t:
+                text += t + "\n"
     return text.strip()
+```
+
+Also update `requirements.txt` — remove the `groq` line entirely:
+```
+fastapi==0.115.0
+uvicorn==0.30.0
+cohere==5.11.0
+pdfplumber==0.11.0
+reportlab==4.2.2
+python-multipart==0.0.12
+pydantic==2.9.0
+httpx==0.27.0
