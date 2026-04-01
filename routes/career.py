@@ -18,7 +18,6 @@ def extract_text(file_bytes):
 
 
 def normalize(data):
-    # 🔥 FIX profile_summary (force string always)
     ps = data.get("profile_summary", "")
     if isinstance(ps, dict):
         ps = " ".join([str(v) for v in ps.values()])
@@ -32,7 +31,6 @@ def normalize(data):
     data["careers"] = data.get("careers", [])
 
     for c in data["careers"]:
-
         try:
             c["match_score"] = int(c.get("match_score", 0))
         except:
@@ -41,7 +39,6 @@ def normalize(data):
         c["salary_range"] = str(c.get("salary_range", ""))
         c["reason"] = str(c.get("reason", ""))
 
-        # 🔥 SAFE skill_gap_analysis
         safe_gap = {}
         for k, v in c.get("skill_gap_analysis", {}).items():
             try:
@@ -53,7 +50,6 @@ def normalize(data):
 
         c["skill_gap_analysis"] = safe_gap
 
-        # 🔥 FORCE LIST TYPES (avoid crashes in Android)
         def ensure_list(val):
             if isinstance(val, list):
                 return val
@@ -78,8 +74,8 @@ async def analyze_pdf(file: UploadFile = File(...)):
         contents = await file.read()
         resume_text = extract_text(contents)
 
-     prompt = f"""
-You are an expert AI career advisor.
+        prompt = f"""
+You are an Industrial expert Senior AI career advisor.
 
 Analyze the resume and return STRICT JSON.
 
@@ -99,7 +95,7 @@ FORMAT:
   "careers": [
     {{
       "title": "career role",
-      "match_score": 0-100,
+      "match_score": 0,
       "salary_range": "string",
       "reason": "why suitable",
       "skill_gap_analysis": {{"skill": 0.5}},
@@ -115,12 +111,12 @@ FORMAT:
 """
 
         response = client.chat.completions.create(
-    model="llama-3.1-8b-instant",
-    temperature=0.3,
-    max_tokens=1200,
-    response_format={"type": "json_object"},
-    messages=[{"role": "user", "content": prompt}],
-)
+            model="llama-3.1-8b-instant",
+            temperature=0.3,
+            max_tokens=1200,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": prompt}],
+        )
 
         raw = response.choices[0].message.content
 
