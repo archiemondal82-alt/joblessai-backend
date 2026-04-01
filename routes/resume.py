@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List, Optional
-from ai_handler import get_gemini_response
+from typing import Optional
+from ai_handler import get_ai_response
 import io
 
 router = APIRouter()
@@ -20,21 +20,16 @@ class ResumeRequest(BaseModel):
     projects: Optional[str] = ""
     certifications: Optional[str] = ""
     target_role: str
-    api_key: str
-    model: str = "gemini-1.5-flash"
 
 class EnhanceRequest(BaseModel):
     section: str
     content: str
     target_role: str
-    api_key: str
-    model: str = "gemini-1.5-flash"
 
 @router.post("/enhance-section")
 async def enhance_section(request: EnhanceRequest):
-    """AI-enhance a specific resume section."""
     prompt = f"""
-    You are an expert resume writer. Enhance the following {request.section} section 
+    You are an expert resume writer. Enhance the following {request.section} section
     for a {request.target_role} position. Make it ATS-optimized, impactful, and professional.
     Use strong action verbs and quantify achievements where possible.
     Return ONLY the enhanced content, no explanations.
@@ -43,7 +38,7 @@ async def enhance_section(request: EnhanceRequest):
     {request.content}
     """
     try:
-        result = get_gemini_response(prompt, request.api_key, request.model)
+        result = get_ai_response(prompt)
         return {"enhanced": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -51,7 +46,6 @@ async def enhance_section(request: EnhanceRequest):
 
 @router.post("/generate-pdf")
 async def generate_resume_pdf(request: ResumeRequest):
-    """Generate a professional ATS-optimized PDF resume."""
     try:
         pdf_bytes = _build_pdf(request)
         return StreamingResponse(
@@ -66,10 +60,10 @@ async def generate_resume_pdf(request: ResumeRequest):
 def _build_pdf(req: ResumeRequest) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm, mm
+    from reportlab.lib.units import cm
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
-    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, HRFlowable
+    from reportlab.lib.enums import TA_LEFT
     import io
 
     buf = io.BytesIO()
@@ -78,9 +72,6 @@ def _build_pdf(req: ResumeRequest) -> bytes:
         topMargin=1.2*cm, bottomMargin=1.2*cm)
 
     accent = colors.HexColor("#1a1a2e")
-    light_accent = colors.HexColor("#16213e")
-
-    styles = getSampleStyleSheet()
     name_style = ParagraphStyle("name", fontSize=22, fontName="Helvetica-Bold",
         textColor=accent, alignment=TA_LEFT, spaceAfter=2)
     contact_style = ParagraphStyle("contact", fontSize=9, fontName="Helvetica",
@@ -99,55 +90,40 @@ def _build_pdf(req: ResumeRequest) -> bytes:
         ]
 
     story = []
-
-    # Name
     story.append(Paragraph(req.name, name_style))
-
-    # Contact line
     contact_parts = [req.email, req.phone]
     if req.linkedin: contact_parts.append(req.linkedin)
     if req.github: contact_parts.append(req.github)
     story.append(Paragraph(" | ".join(contact_parts), contact_style))
     story.append(HRFlowable(width="100%", thickness=2, color=accent, spaceAfter=6))
 
-    # Summary
     if req.summary:
         story += section_header("Professional Summary")
         story.append(Paragraph(req.summary, body_style))
-
-    # Experience
     if req.experience:
         story += section_header("Work Experience")
         for line in req.experience.strip().split("\n"):
             if line.strip():
-                if line.strip().startswith("•") or line.strip().startswith("-"):
+                if line.strip().startswith(("•", "-")):
                     story.append(Paragraph(f"&nbsp;&nbsp;{line.strip()}", body_style))
                 else:
                     story.append(Paragraph(line.strip(), bold_body))
-
-    # Education
     if req.education:
         story += section_header("Education")
         for line in req.education.strip().split("\n"):
             if line.strip():
                 story.append(Paragraph(line.strip(), body_style))
-
-    # Skills
     if req.skills:
         story += section_header("Skills")
         story.append(Paragraph(req.skills, body_style))
-
-    # Projects
     if req.projects:
         story += section_header("Projects")
         for line in req.projects.strip().split("\n"):
             if line.strip():
-                if line.strip().startswith("•") or line.strip().startswith("-"):
+                if line.strip().startswith(("•", "-")):
                     story.append(Paragraph(f"&nbsp;&nbsp;{line.strip()}", body_style))
                 else:
                     story.append(Paragraph(line.strip(), bold_body))
-
-    # Certifications
     if req.certifications:
         story += section_header("Certifications")
         for line in req.certifications.strip().split("\n"):
