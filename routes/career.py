@@ -1,13 +1,11 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException
 from pydantic import BaseModel
-from ai_handler import get_gemini_response, extract_pdf_text
+from ai_handler import get_ai_response, extract_pdf_text
 
 router = APIRouter()
 
 class CareerRequest(BaseModel):
     resume_text: str
-    api_key: str
-    model: str = "gemini-1.5-flash"
     analysis_depth: str = "comprehensive"
     include_learning_path: bool = True
     include_interview_prep: bool = True
@@ -72,7 +70,7 @@ async def analyze_career(request: CareerRequest):
     """
 
     try:
-        result = get_gemini_response(prompt, request.api_key, request.model)
+        result = get_ai_response(prompt)
         return {"analysis": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -81,8 +79,6 @@ async def analyze_career(request: CareerRequest):
 @router.post("/analyze-pdf")
 async def analyze_career_pdf(
     file: UploadFile = File(...),
-    api_key: str = Form(...),
-    model: str = Form("gemini-1.5-flash"),
     analysis_depth: str = Form("comprehensive"),
     include_learning_path: bool = Form(True),
     include_interview_prep: bool = Form(True),
@@ -94,8 +90,6 @@ async def analyze_career_pdf(
 
     req = CareerRequest(
         resume_text=resume_text,
-        api_key=api_key,
-        model=model,
         analysis_depth=analysis_depth,
         include_learning_path=include_learning_path,
         include_interview_prep=include_interview_prep,
