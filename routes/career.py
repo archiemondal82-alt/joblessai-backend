@@ -115,10 +115,12 @@ FORMAT:
 """
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            response_format={"type": "json_object"},
-            messages=[{"role": "user", "content": prompt}],
-        )
+    model="llama-3.1-8b-instant",
+    temperature=0.3,
+    max_tokens=1200,
+    response_format={"type": "json_object"},
+    messages=[{"role": "user", "content": prompt}],
+)
 
         raw = response.choices[0].message.content
 
