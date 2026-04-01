@@ -1,29 +1,25 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-from ai_handler import get_gemini_response
+from ai_handler import get_ai_response
+import json
 
 router = APIRouter()
 
 class InterviewRequest(BaseModel):
     role: str
-    experience_level: str = "fresher"  # fresher, junior, mid, senior
+    experience_level: str = "fresher"
     domain: str = "general"
     num_questions: int = 10
-    api_key: str
-    model: str = "gemini-1.5-flash"
 
 class FeedbackRequest(BaseModel):
     question: str
     answer: str
     role: str
-    api_key: str
-    model: str = "gemini-1.5-flash"
 
 @router.post("/generate-questions")
 async def generate_questions(request: InterviewRequest):
     prompt = f"""
-    You are an expert interviewer at a top tech company. Generate {request.num_questions} interview questions 
+    You are an expert interviewer at a top tech company. Generate {request.num_questions} interview questions
     for a {request.experience_level} {request.role} position in the {request.domain} domain.
 
     Include a mix of:
@@ -37,7 +33,7 @@ async def generate_questions(request: InterviewRequest):
     3. Difficulty (Easy/Medium/Hard)
     4. Key points to cover in the answer (2-3 bullet points)
 
-    Format as JSON array like:
+    Format as JSON array:
     [
       {{
         "question": "...",
@@ -50,14 +46,12 @@ async def generate_questions(request: InterviewRequest):
     Return ONLY the JSON array, no other text.
     """
     try:
-        result = get_gemini_response(prompt, request.api_key, request.model)
-        # Clean JSON
+        result = get_ai_response(prompt)
         result = result.strip()
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        import json
         questions = json.loads(result.strip())
         return {"questions": questions, "role": request.role, "level": request.experience_level}
     except Exception as e:
@@ -76,7 +70,7 @@ async def evaluate_answer(request: FeedbackRequest):
     Provide structured feedback:
 
     ## Score: X/10
-    
+
     ## Strengths
     - What they did well
 
@@ -90,7 +84,7 @@ async def evaluate_answer(request: FeedbackRequest):
     - Specific advice to improve this type of answer
     """
     try:
-        result = get_gemini_response(prompt, request.api_key, request.model)
+        result = get_ai_response(prompt)
         return {"feedback": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
