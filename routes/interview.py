@@ -16,44 +16,47 @@ class FeedbackRequest(BaseModel):
     answer: str
     role: str
 
+
 @router.post("/generate-questions")
 async def generate_questions(request: InterviewRequest):
     prompt = f"""
-    You are an expert interviewer at a top tech company. Generate {request.num_questions} interview questions
-    for a {request.experience_level} {request.role} position in the {request.domain} domain.
+Generate {request.num_questions} interview questions.
 
-    Include a mix of:
-    - Technical questions (60%)
-    - Behavioral/situational questions (25%)
-    - Role-specific scenario questions (15%)
+Role: {request.role}
+Experience: {request.experience_level}
+Domain: {request.domain}
 
-    For each question, provide:
-    1. The question
-    2. Category (Technical/Behavioral/Scenario)
-    3. Difficulty (Easy/Medium/Hard)
-    4. Key points to cover in the answer (2-3 bullet points)
+Return JSON:
+[
+  {{
+    "question": "",
+    "category": "",
+    "difficulty": "",
+    "key_points": ["", "", ""]
+  }}
+]
+"""
 
-    Format as JSON array:
-    [
-      {{
-        "question": "...",
-        "category": "Technical",
-        "difficulty": "Medium",
-        "key_points": ["point1", "point2", "point3"]
-      }}
-    ]
-
-    Return ONLY the JSON array, no other text.
-    """
     try:
         result = get_ai_response(prompt)
         result = result.strip()
+
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        questions = json.loads(result.strip())
-        return {"questions": questions, "role": request.role, "level": request.experience_level}
+
+        questions = json.loads(result)
+
+        if not isinstance(questions, list):
+            questions = []
+
+        return {
+            "questions": questions,
+            "role": request.role,
+            "level": request.experience_level
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -61,30 +64,21 @@ async def generate_questions(request: InterviewRequest):
 @router.post("/evaluate-answer")
 async def evaluate_answer(request: FeedbackRequest):
     prompt = f"""
-    You are an expert interviewer evaluating a candidate's answer for a {request.role} position.
+Evaluate this answer.
 
-    Question: {request.question}
+Question: {request.question}
+Answer: {request.answer}
 
-    Candidate's Answer: {request.answer}
+Give:
+- Score out of 10
+- Strengths
+- Improvements
+- Better answer outline
+"""
 
-    Provide structured feedback:
-
-    ## Score: X/10
-
-    ## Strengths
-    - What they did well
-
-    ## Areas to Improve
-    - What was missing or could be better
-
-    ## Model Answer Outline
-    - Key points they should have covered
-
-    ## Tips
-    - Specific advice to improve this type of answer
-    """
     try:
         result = get_ai_response(prompt)
         return {"feedback": result}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
