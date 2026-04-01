@@ -45,15 +45,3 @@ def extract_pdf_text(pdf_bytes: bytes) -> str:
             if t:
                 text += t + "\n"
     return text.strip()
-```
-
-Also update `requirements.txt` — remove the `groq` line entirely:
-```
-fastapi==0.115.0
-uvicorn==0.30.0
-cohere==5.11.0
-pdfplumber==0.11.0
-reportlab==4.2.2
-python-multipart==0.0.12
-pydantic==2.9.0
-httpx==0.27.0
