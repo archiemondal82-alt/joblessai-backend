@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from ai_handler import get_gemini_response
+from ai_handler import get_ai_response
 
 router = APIRouter()
 
@@ -8,8 +8,6 @@ class CompareRequest(BaseModel):
     path1: str
     path2: str
     background: str = ""
-    api_key: str
-    model: str = "gemini-1.5-flash"
 
 @router.post("/compare-paths")
 async def compare_paths(request: CompareRequest):
@@ -54,7 +52,7 @@ async def compare_paths(request: CompareRequest):
     {"Based on the candidate's background, " if request.background else ""}Which path is better and why.
     """
     try:
-        result = get_gemini_response(prompt, request.api_key, request.model)
+        result = get_ai_response(prompt)
         return {"comparison": result, "path1": request.path1, "path2": request.path2}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
