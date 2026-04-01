@@ -1,22 +1,33 @@
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-import io
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.pagesizes import A4
+import os
 
 router = APIRouter()
 
-@router.post("/api/pyq/pdf")
+@router.post("/generate-pdf")
 def generate_pdf(data: dict):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer)
+    file_path = "pyq_output.pdf"
 
-    elements = []
+    doc = SimpleDocTemplate(file_path, pagesize=A4)
+    styles = getSampleStyleSheet()
 
-    for q in data.get("questions", []):
-        elements.append(Paragraph(q["question"]))
-        elements.append(Spacer(1, 10))
+    content = []
 
-    doc.build(elements)
-    buffer.seek(0)
+    content.append(Paragraph("JobLess AI — PYQ Pack", styles["Title"]))
+    content.append(Spacer(1, 20))
 
-    return StreamingResponse(buffer, media_type="application/pdf")
+    questions = data.get("questions", [])
+
+    for i, q in enumerate(questions, 1):
+        content.append(Paragraph(f"<b>Q{i}. {q.get('question','')}</b>", styles["Normal"]))
+        content.append(Spacer(1, 8))
+
+        content.append(Paragraph(f"<i>Approach:</i> {q.get('approach','')}", styles["Normal"]))
+        content.append(Spacer(1, 16))
+
+    doc.build(content)
+
+    return FileResponse(file_path, filename="PYQ.pdf")
