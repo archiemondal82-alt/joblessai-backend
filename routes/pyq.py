@@ -11,57 +11,40 @@ class PYQRequest(BaseModel):
     year_range: str = "2020-2024"
     num_questions: int = 15
 
+
 @router.post("/get-questions")
 async def get_pyq(request: PYQRequest):
-    prompt = f"""
-    You are a database of previous year interview questions. Generate {request.num_questions}
-    realistic previous year interview questions for {request.domain} roles
-    {"at " + request.company if request.company != "general" else "at top tech companies"}
-    from {request.year_range}.
+    prompt = f"""Generate {request.num_questions} realistic interview questions.
 
-    For each question include:
-    - The actual question asked
-    - Year and company (approximate)
-    - Topic/concept being tested
-    - Difficulty level
-    - Brief solution approach
+Domain: {request.domain}
+Company: {request.company}
+Years: {request.year_range}
 
-    Format as JSON:
-    [
-      {{
-        "question": "...",
-        "year": "2023",
-        "company": "...",
-        "topic": "...",
-        "difficulty": "Medium",
-        "approach": "..."
-      }}
-    ]
+Return JSON:
+{{
+ "questions": [
+   {{
+     "question": "",
+     "approach": ""
+   }}
+ ]
+}}"""
 
-    Return ONLY valid JSON array.
-    """
     try:
         result = get_ai_response(prompt)
         result = result.strip()
+
         if result.startswith("```"):
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
-        questions = json.loads(result.strip())
-        return {"questions": questions, "domain": request.domain}
+
+        data = json.loads(result)
+
+        if not isinstance(data.get("questions"), list):
+            data["questions"] = []
+
+        return data
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-DOMAINS = [
-    "Software Engineering", "Data Science", "Machine Learning",
-    "Frontend Development", "Backend Development", "DevOps",
-    "Product Management", "System Design", "Android Development",
-    "Electrical Engineering", "VLSI", "Embedded Systems",
-    "Power Electronics", "Signal Processing", "Mechanical Engineering",
-    "Civil Engineering", "Finance", "Marketing", "HR", "Operations"
-]
-
-@router.get("/domains")
-def get_domains():
-    return {"domains": DOMAINS}
