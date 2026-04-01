@@ -1,177 +1,84 @@
-"""
-career_router.py  —  Drop-in replacement for your existing career router.
-
-HOW TO INTEGRATE:
-  1. Copy this file into your FastAPI backend project.
-  2. In your main.py: from career_router import router as career_router
-                      app.include_router(career_router)
-  3. Make sure your Render env vars are set:
-       GROQ_API_KEY=your_key_here
-  4. pip install groq PyMuPDF
-
-ENDPOINT CHANGE:
-  Before:  POST /api/career/analyze-pdf  → { "analysis": "plain text string" }
-  After:   POST /api/career/analyze-pdf  → Full structured JSON (see CareerAnalysisResult)
-"""
-
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import JSONResponse
+import fitz  # PyMuPDF
 import os
-import json
-import re
-import fitz  # PyMuPDF — pip install PyMuPDF
 from groq import Groq
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any
+import json
 
-router = APIRouter()
+career_router = APIRouter()
 
-# ── Groq client (reads GROQ_API_KEY from env) ─────────────────────────────────
-_groq = Groq(api_key=os.environ.get("GROQ_API_KEY", ""))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ── Pydantic models (matches Android CareerAnalysisResponse) ──────────────────
+def extract_text_from_pdf(file_bytes):
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
 
-class CareerPath(BaseModel):
-    title: str = ""
-    match_score: int = 0
-    salary_range: str = ""
-    reason: str = ""
-    skill_gap_analysis: Dict[str, int] = Field(default_factory=dict)
-    next_steps: List[str] = Field(default_factory=list)
-    learning_path: List[str] = Field(default_factory=list)
-    interview_tips: List[str] = Field(default_factory=list)
-    job_search_keywords: str = ""
-    top_companies: List[str] = Field(default_factory=list)
-    certifications: List[str] = Field(default_factory=list)
+def normalize(data):
+    data["profile_summary"] = data.get("profile_summary", "")
+    data["current_skills"] = data.get("current_skills", [])
+    data["careers"] = data.get("careers", [])
 
-class CareerAnalysisResult(BaseModel):
-    profile_summary: str = ""
-    current_skills: List[str] = Field(default_factory=list)
-    careers: List[CareerPath] = Field(default_factory=list)
+    for c in data["careers"]:
+        c["match_score"] = int(c.get("match_score", 0))
+        c["salary_range"] = c.get("salary_range", "")
+        c["reason"] = c.get("reason", "")
+        c["skill_gap_analysis"] = {
+            k: float(v) for k, v in c.get("skill_gap_analysis", {}).items()
+        }
+        c["next_steps"] = c.get("next_steps", [])
+        c["learning_path"] = c.get("learning_path", [])
+        c["interview_tips"] = c.get("interview_tips", [])
+        c["job_search_keywords"] = c.get("job_search_keywords", "")
+        c["top_companies"] = c.get("top_companies", [])
+        c["certifications"] = c.get("certifications", [])
 
+    return data
 
-# ── Career analysis prompt ─────────────────────────────────────────────────────
+@career_router.post("/api/career/analyze-pdf")
+async def analyze_pdf(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        resume_text = extract_text_from_pdf(contents)
 
-CAREER_PROMPT = """
-Act as an Elite Career Strategist and AI Career Coach specialising in the Indian job market.
+        prompt = f"""
+Analyze this resume and return STRICT JSON:
 
-**Resume / Profile:**
 {resume_text}
 
-**Analysis Depth:** {depth}
-
-**Instructions:**
-Return ONLY a valid JSON object (no markdown, no code blocks, no preamble) with this exact structure:
-
+FORMAT:
 {{
-  "profile_summary": "A concise 2-sentence professional summary of the candidate",
-  "current_skills": ["Skill1", "Skill2", "Skill3", "Skill4", "Skill5"],
+  "profile_summary": "short summary",
+  "current_skills": ["skill1", "skill2"],
   "careers": [
     {{
-      "title": "Specific Job Title",
-      "match_score": 85,
-      "salary_range": "₹12L - ₹20L",
-      "reason": "1-2 sentence explanation of why this role fits the profile",
-      "skill_gap_analysis": {{"Python": 90, "Leadership": 40, "SQL": 75}},
-      "next_steps": ["Concrete step 1", "Concrete step 2", "Concrete step 3"],
-      "learning_path": ["Course / resource 1", "Course / resource 2", "Course / resource 3"],
-      "interview_tips": ["Specific tip 1", "Specific tip 2"],
-      "job_search_keywords": "relevant keywords for job portals",
-      "top_companies": ["Company1", "Company2", "Company3"],
-      "certifications": ["Certification1", "Certification2"]
+      "title": "role",
+      "match_score": 0-100,
+      "salary_range": "string",
+      "reason": "why",
+      "skill_gap_analysis": {{"skill": 0.5}},
+      "next_steps": ["..."],
+      "learning_path": ["..."],
+      "interview_tips": ["..."],
+      "job_search_keywords": "string",
+      "top_companies": ["..."],
+      "certifications": ["..."]
     }}
   ]
 }}
-
-Rules:
-- Suggest 7-8 DISTINCT career paths ranked by match_score descending.
-- match_score must be an integer 0-100.
-- salary_range must use INR ₹ and Lakhs format (e.g. ₹8L - ₹14L).
-- skill_gap_analysis: keys = skill names, values = proficiency integer 0-100.
-- Include 3-5 skills in skill_gap_analysis per career.
-- Keep all string values concise and mobile-friendly (no excessively long lines).
-- Return ONLY the JSON object. Start with {{ and end with }}.
 """
 
-
-# ── PDF text extraction ────────────────────────────────────────────────────────
-
-def _extract_pdf_text(pdf_bytes: bytes) -> str:
-    try:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        text = "\n".join(page.get_text() for page in doc)
-        doc.close()
-        # Truncate to ~6000 chars to stay within token budget
-        return text[:6000].strip()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read PDF: {str(e)}")
-
-
-# ── JSON extraction helper ─────────────────────────────────────────────────────
-
-def _safe_parse(raw: str) -> dict:
-    """Strip markdown fences and parse JSON from the LLM response."""
-    text = raw.strip()
-    # Remove ```json ... ``` or ``` ... ```
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*```$", "", text)
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # Attempt to extract the first { ... } block
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
-        raise ValueError(f"Failed to parse JSON from LLM response: {text[:200]}")
-
-
-# ── Main endpoint ──────────────────────────────────────────────────────────────
-
-@router.post("/api/career/analyze-pdf", response_model=CareerAnalysisResult)
-async def analyze_career_pdf(
-    file: UploadFile = File(...),
-    analysis_depth: str = Form("comprehensive"),
-):
-    """
-    Accept a PDF resume and return a structured career analysis powered by Groq.
-    """
-    # 1. Read + validate the uploaded file
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-
-    pdf_bytes = await file.read()
-    if len(pdf_bytes) == 0:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
-
-    # 2. Extract text
-    resume_text = _extract_pdf_text(pdf_bytes)
-    if len(resume_text) < 50:
-        raise HTTPException(status_code=400, detail="Could not extract readable text from PDF.")
-
-    # 3. Call Groq — use llama-3.3-70b-versatile for best JSON output quality
-    prompt = CAREER_PROMPT.format(resume_text=resume_text, depth=analysis_depth)
-    try:
-        completion = _groq.chat.completions.create(
+        response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
+            response_format={"type": "json_object"},
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=8192,
-            temperature=0.65,
-            response_format={"type": "json_object"},   # forces JSON output
         )
-        raw = completion.choices[0].message.content.strip()
+
+        data = json.loads(response.choices[0].message.content)
+
+        return JSONResponse(content=normalize(data))
+
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Groq API error: {str(e)}")
-
-    # 4. Parse and validate
-    try:
-        data = _safe_parse(raw)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"JSON parse error: {str(e)}")
-
-    # 5. Normalise — ensure match_score and skill values are integers
-    for career in data.get("careers", []):
-        career["match_score"] = int(career.get("match_score", 0))
-        gap = career.get("skill_gap_analysis", {})
-        career["skill_gap_analysis"] = {k: int(v) for k, v in gap.items()}
-
-    return CareerAnalysisResult(**data)
+        return JSONResponse(status_code=500, content={"error": str(e)})
