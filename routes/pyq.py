@@ -14,37 +14,51 @@ class PYQRequest(BaseModel):
 
 @router.post("/get-questions")
 async def get_pyq(request: PYQRequest):
-    prompt = f"""Generate {request.num_questions} realistic interview questions.
+    prompt = f"""Generate {request.num_questions} interview questions.
 
 Domain: {request.domain}
 Company: {request.company}
 Years: {request.year_range}
 
-Return JSON:
+Return STRICT JSON:
 {{
- "questions": [
-   {{
-     "question": "",
-     "approach": ""
-   }}
- ]
+  "questions": [
+    {{
+      "question": "",
+      "approach": ""
+    }}
+  ]
 }}"""
 
     try:
         result = get_ai_response(prompt)
         result = result.strip()
 
-        if result.startswith("```"):
+        # 🔥 CLEAN MARKDOWN IF ANY
+        if "```" in result:
             result = result.split("```")[1]
             if result.startswith("json"):
                 result = result[4:]
 
-        data = json.loads(result)
+        # 🔥 SAFE PARSE
+        try:
+            data = json.loads(result)
+        except:
+            return {"questions": []}
 
-        if not isinstance(data.get("questions"), list):
-            data["questions"] = []
+        # 🔥 FORCE STRUCTURE
+        if isinstance(data, list):
+            return {"questions": data}
 
-        return data
+        if not isinstance(data, dict):
+            return {"questions": []}
+
+        questions = data.get("questions", [])
+
+        if not isinstance(questions, list):
+            questions = []
+
+        return {"questions": questions}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
