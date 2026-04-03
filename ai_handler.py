@@ -7,7 +7,7 @@ def get_ai_response(prompt: str) -> str:
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         temperature=0.3,
-        max_tokens=1200,
+        max_tokens=200,
         messages=[{"role": "user", "content": prompt}],
     )
     return response.choices[0].message.content
